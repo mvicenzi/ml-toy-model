@@ -27,11 +27,13 @@ from warpconvnet.nn.functional.transforms import cat                    # Concat
 # Building blocks: small modular components used to construct the main model
 # ---------------------------------------------------------------------------
 
-class ConvBlock2d(Sequential):
+class ConvBlock2D(Sequential):
     """
-    Sparse 2D convolutional block base on WarpConvNet functions.
-    Composition: SparseConv2d -> BatchNorm1d -> ReLU
-    - relu activation needs to be disabled in some cases
+    Sparse 2D convolutional block based on WarpConvNet functions.
+    Composition: 
+        SparseConv2d -> BatchNorm1d -> ReLU
+    - this is the main conv layer in base resnet block  
+    - note: relu activation needs to be disabled in some cases!
     """
     def __init__(self, in_ch, out_ch, kernel_size=3, stride=1, bias=False, relu=True):
         super().__init__(
@@ -42,7 +44,7 @@ class ConvBlock2d(Sequential):
 
 # ---------------------------------------------------------------------------
 
-class ConvTrBlock2d(nn.Module):
+class ConvTrBlock2D(nn.Module):
     """
     Sparse transposed convolution (upsampling block).
     Used in the decoder to increase spatial resolution.
@@ -68,7 +70,7 @@ class ConvTrBlock2d(nn.Module):
 
 # ---------------------------------------------------------------------------
 
-class ResidualSparseBlock2d(nn.Module):
+class ResidualSparseBlock2D(nn.Module):
     """
     Sparse residual block (the core computation unit of the encoder/decoder).
     This is the ResNet "BasicBlock" from mink_unet.py:
@@ -76,27 +78,27 @@ class ResidualSparseBlock2d(nn.Module):
         Conv → BN
         Add residual
         ReLU 
-    - Sparse convolution layers based on ConvBlock2d 
+    - Sparse convolution layers based on ConvBlock2D 
+    - "stride" parameter always at 1: size downsampling is external!
     - 'relu=False' makes the second layer without activation
     - Skip connection: adds input ('identity') to output ('out')
     - Preserves sparse coordinate structure (no densification)
     """
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch, out_ch, stride=1):
         super().__init__()
 
-        # if you need to downsample, the skip connection must downsample the input
-        # before adding it to the output right before the last ReLU
+        # if you downsample or add feature dimensions to pixels
+        # input must be adapted to properly be added to output in residual skip connection
         # we do this with a simple convolution block
         self.downsample = None
-        if in_ch != out_ch:
-            # Projection for channel mismatch between input/output
-            self.downsample = ConvBlock2d(in_ch, out_ch, kernel_size=1, stride=1, relu=False)
+        if stride!= 1 or in_ch != out_ch:
+            self.downsample = ConvBlock2D(in_ch, out_ch, kernel_size=1, stride=stride, relu=False)
 
         # First convolution: SparseConv2d + BatchNorm1d + ReLU
-        self.conv1 = ConvBlock2d(in_ch, out_ch, kernel_size=3, stride=1)
+        self.conv1 = ConvBlock2D(in_ch, out_ch, kernel_size=3, stride=stride)
 
         # Second convolution: SparseConv2d + BatchNorm1d
-        self.conv2 = ConvBlock2d(out_ch, out_ch, kernel_size=3, stride=1, relu=False)
+        self.conv2 = ConvBlock2D(out_ch, out_ch, kernel_size=3, stride=1, relu=False)
 
         # Final activation (after skip addition)
         self.act = ReLU(inplace=True)
@@ -172,8 +174,8 @@ class Net(nn.Module):
 
         # ---- Encoder (sparse) ----
         # Each stage halves spatial resolution via sparse pooling and doubles channels
-        self.enc1 = ResidualSparseBlock2d(1, 32)   # [B,1,28,28] → [B,32,28,28]
-        self.enc2 = ResidualSparseBlock2d(32, 64)  # [B,32,14,14] → [B,64,14,14]
+        self.enc1 = ResidualSparseBlock2D(1, 32)   # [B,1,28,28] to [B,32,28,28]
+        self.enc2 = ResidualSparseBlock2D(32, 64)  # [B,32,14,14] to [B,64,14,14]
 
         # ---- Bottleneck (dense) ----
         # Feature mixing between encoder and decoder:
@@ -184,11 +186,11 @@ class Net(nn.Module):
 
         # ---- Decoder (sparse) ----
         # Symmetric to encoder but with upsampling and skip merges
-        self.up1  = ConvTrBlock2d(64, 64, kernel_size=2, stride=2)  # upsample 7→14
-        self.dec1 = ResidualSparseBlock2d(64 + 64, 64)              # merge skip2 + current
+        self.up1  = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # upsample 7→14
+        self.dec1 = ResidualSparseBlock2D(64 + 64, 64)              # merge skip2 + current
 
-        self.up0  = ConvTrBlock2d(64, 32, kernel_size=2, stride=2)  # upsample 14→28
-        self.dec0 = ResidualSparseBlock2d(32 + 32, 32)              # merge skip1 + current
+        self.up0  = ConvTrBlock2D(64, 32, kernel_size=2, stride=2)  # upsample 14→28
+        self.dec0 = ResidualSparseBlock2D(32 + 32, 32)              # merge skip1 + current
 
         # ---- Head (dense classification) ----
         # Pool global information into a vector and output 10 logits
@@ -204,41 +206,49 @@ class Net(nn.Module):
         Input: [B,1,28,28] dense tensor
         Output: [B,10] log-probabilities (digit classes)
         """
-        # --- Convert dense input image to sparse voxel representation
+        ### Convert dense input image to sparse voxel representation
+        ### this needs to be done because MNIST images are not actually sparse 
         xs = Voxels.from_dense(x)
 
         # ------------------ Encoder ------------------
 
         ### NOTE: this is using fixed downsampling (nothing is learned there)
         ### in mink_unet, downsamplig is done by an initial convolution w/ stride=2
-        ### the resnet module (conv + norm + relu, etc..)
+        ### the resnet encoding module (conv + norm + relu, etc..) is then stride=1
 
-        xs = self.enc1(xs)                             # Sparse convs 1→32 @28×28
+        ### also this is semplitfication from mink_unet
+        xs = self.enc1(xs)                             # Sparse convs 1 to 32 @28×28
         skip1 = xs                                     # Save skip connection (28×28)
         xs = sparse_max_pool(xs, kernel_size=(2,2), stride=(2,2))  # Downsample to 14×14
 
-        xs = self.enc2(xs)                             # Sparse convs 32→64 @14×14
+        xs = self.enc2(xs)                             # Sparse convs 32 to 64 @14×14
         skip2 = xs                                     # Save skip (14×14)
         xs = sparse_max_pool(xs, kernel_size=(2,2), stride=(2,2))  # Downsample to 7×7
 
         # ------------------ Bottleneck ------------------
+        ### FIXME FIXME: this is going back to being dense
+        ### this allows to call pytorch standard attention layer
+        ### needs to find spare alternative?? 
+
         bot_sparse = xs                                # Preserve stride & coords
         # Convert sparse features to dense for attention
         x_dense = xs.to_dense(channel_dim=1, spatial_shape=(7, 7))
-        x_dense = self.pre_attn(x_dense)               # 64→128 channels
+        x_dense = self.pre_attn(x_dense)               # 64 to 128 channels
         x_dense = self.attn(x_dense)                   # global context
-        x_dense = self.post_attn(x_dense)              # 128→64 channels
+        x_dense = self.post_attn(x_dense)              # 128 to 64 channels
+
         # Convert back to sparse using same geometry (coords + stride)
         xs = Voxels.from_dense(x_dense, dense_tensor_channel_dim=1,
                                target_spatial_sparse_tensor=bot_sparse)
 
         # ------------------ Decoder ------------------
         # Upsample and fuse with sparse skip connections
-        y = self.up1(xs, skip2)                        # 7→14 upsample
+
+        y = self.up1(xs, skip2)                        # 7 to 14 upsample
         y = cat(y, skip2)                              # sparse concatenation (channels: 64+64)
         y = self.dec1(y)                               # residual processing
 
-        y = self.up0(y, skip1)                         # 14→28 upsample
+        y = self.up0(y, skip1)                         # 14 to 28 upsample
         y = cat(y, skip1)                              # concat (32+32)
         y = self.dec0(y)                               # residual processing
 
@@ -247,6 +257,114 @@ class Net(nn.Module):
         y_dense = y.to_dense(channel_dim=1, spatial_shape=(28,28))
         logits  = self.head(y_dense)
         return F.log_softmax(logits, dim=1)            # Log-probabilities for 10 digits
+
+
+class MinkNet(nn.Module):
+    """
+    U-ResNet-style sparse model following MinkUNet18 architecture.
+    - Initial conv at full resolution
+    - Encoder: strided convolutions + residual blocks (2 stages)
+    - Bottleneck: dense attention at 7×7 resolution
+    - Decoder: transposed convolutions + skip connections + residual blocks (2 stages)
+    - Head: dense classification layer (10 digits)
+    
+    Tensor flow (for 28×28 input):
+    Encoder:  [B,1,28,28] → [B,32,28,28] → [B,32,14,14] → [B,64,7,7]
+    Bottleneck: [B,64,7,7] → [B,128,7,7] (attention) → [B,64,7,7]
+    Decoder:  [B,64,7,7] → [B,64,14,14] → [B,96,28,28]
+    """
+    def __init__(self):
+        super().__init__()
+
+        # ---- Initial convolution (full resolution feature extraction) ----
+        self.conv0 = ConvBlock2D(1, 32, kernel_size=3, stride=1)  # [B,1,28,28] → [B,32,28,28]
+
+        # ---- Encoder (2 stages) ----
+        # Stage 1: 28×28 → 14×14
+        self.conv1 = ConvBlock2D(32, 32, kernel_size=2, stride=2)  # Spatial downsample
+        self.block1 = ResidualSparseBlock2D(32, 32)                # Channel stays 32
+        
+        # Stage 2: 14×14 → 7×7
+        self.conv2 = ConvBlock2D(32, 32, kernel_size=2, stride=2)  # Spatial downsample
+        self.block2 = ResidualSparseBlock2D(32, 64)                # Channel projection 32→64
+
+        # ---- Bottleneck (dense attention at 7×7) ----
+        # Global context at 7×7 resolution (49 spatial tokens)
+        self.pre_attn  = nn.Conv2d(64, 128, kernel_size=1)      # channel lift 64→128
+        self.attn      = BottleneckAttention2D(128, heads=4)    # global attention
+        self.post_attn = nn.Conv2d(128, 64, kernel_size=1)      # back to 64 channels
+
+        # ---- Decoder (2 stages, symmetric to encoder) ----
+        # Stage 1: 7×7 → 14×14
+        self.convtr5 = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # Upsample
+        self.block6 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip1, process
+        
+        # Stage 2: 14×14 → 28×28 (full resolution)
+        self.convtr7 = ConvTrBlock2D(64, 96, kernel_size=2, stride=2)  # Upsample
+        self.block8 = ResidualSparseBlock2D(96 + 32, 96)               # Merge skip0, process
+
+        # ---- Final projection + classification head ----
+        self.final = SparseConv2d(96, 96, kernel_size=1, bias=True)  # Feature refinement
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(96, 10),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Forward pass through the entire network.
+        Input: [B,1,28,28] dense tensor
+        Output: [B,10] log-probabilities (digit classes)
+        """
+        # Convert dense input image to sparse voxel representation
+        xs = Voxels.from_dense(x)
+
+        # ============ ENCODER ============
+        
+        # Initial convolution at full resolution
+        out = self.conv0(xs)                    # [B,1,28,28] → [B,32,28,28]
+        out_p1 = out                            # Skip connection for final decoder stage
+        
+        # Stage 1: 28×28 → 14×14
+        out = self.conv1(out_p1)                # Downsample spatially
+        out = self.block1(out)                  # Residual processing
+        out_b1p2 = out                          # Skip connection [B,32,14,14]
+        
+        # Stage 2: 14×14 → 7×7
+        out = self.conv2(out_b1p2)              # Downsample spatially
+        out = self.block2(out)                  # Residual + channel projection 32→64
+                                                 # Result: [B,64,7,7] - STOP HERE
+
+        # ============ BOTTLENECK (Dense Attention at 7×7) ============
+        # Global context with 49 spatial tokens (7×7)
+        bot_sparse = out                        # Preserve stride & coords
+        x_dense = out.to_dense(channel_dim=1, spatial_shape=(7, 7))
+        x_dense = self.pre_attn(x_dense)        # 64→128 channels
+        x_dense = self.attn(x_dense)            # Global attention at 7×7
+        x_dense = self.post_attn(x_dense)       # 128→64 channels
+        out = Voxels.from_dense(x_dense, dense_tensor_channel_dim=1,
+                                target_spatial_sparse_tensor=bot_sparse)
+
+        # ============ DECODER ============
+        
+        # Stage 1: 7×7 → 14×14
+        out = self.convtr5(out, out_b1p2)       # Upsample, guided by skip geometry
+        out = cat(out, out_b1p2)                # [B,64,14,14] + [B,32,14,14] = [B,96,14,14]
+        out = self.block6(out)                  # Process to [B,64,14,14]
+        
+        # Stage 2: 14×14 → 28×28 (full resolution)
+        out = self.convtr7(out, out_p1)         # Upsample
+        out = cat(out, out_p1)                  # [B,96,28,28] + [B,32,28,28] = [B,128,28,28]
+        out = self.block8(out)                  # Process to [B,96,28,28]
+
+        # ============ FINAL PROJECTION + HEAD ============
+        out = self.final(out)                   # Feature refinement [B,96,28,28]
+        
+        # Convert to dense for classification
+        out_dense = out.to_dense(channel_dim=1, spatial_shape=(28, 28))
+        logits = self.head(out_dense)           # Global pool + classify
+        return F.log_softmax(logits, dim=1)     # Log-probabilities for 10 digits
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +429,9 @@ def main(
         batch_size=test_batch_size, shuffle=True)
 
     # --- Model, optimizer, LR scheduler ---
-    model = Net().to(device)
+    #model = Net().to(device)
+    model = MinkNet().to(device)
+
     optimizer = optim.AdamW(model.parameters(), lr=lr)
     scheduler = StepLR(optimizer, step_size=scheduler_step_size, gamma=gamma)
 
