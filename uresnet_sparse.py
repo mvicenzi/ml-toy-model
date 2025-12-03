@@ -280,26 +280,26 @@ class MinkNet(nn.Module):
         self.conv0 = ConvBlock2D(1, 32, kernel_size=3, stride=1)  # [B,1,28,28] → [B,32,28,28]
 
         # ---- Encoder (2 stages) ----
-        # Stage 1: 28×28 → 14×14
+        # Stage 1: 28×28 to 14×14
         self.conv1 = ConvBlock2D(32, 32, kernel_size=2, stride=2)  # Spatial downsample
         self.block1 = ResidualSparseBlock2D(32, 32)                # Channel stays 32
         
-        # Stage 2: 14×14 → 7×7
+        # Stage 2: 14×14 to 7×7
         self.conv2 = ConvBlock2D(32, 32, kernel_size=2, stride=2)  # Spatial downsample
-        self.block2 = ResidualSparseBlock2D(32, 64)                # Channel projection 32→64
+        self.block2 = ResidualSparseBlock2D(32, 64)                # Channel projection 32 to 64
 
         # ---- Bottleneck (dense attention at 7×7) ----
         # Global context at 7×7 resolution (49 spatial tokens)
-        self.pre_attn  = nn.Conv2d(64, 128, kernel_size=1)      # channel lift 64→128
+        self.pre_attn  = nn.Conv2d(64, 128, kernel_size=1)      # channel lift 64 to 128
         self.attn      = BottleneckAttention2D(128, heads=4)    # global attention
         self.post_attn = nn.Conv2d(128, 64, kernel_size=1)      # back to 64 channels
 
         # ---- Decoder (2 stages, symmetric to encoder) ----
-        # Stage 1: 7×7 → 14×14
+        # Stage 1: 7×7 to 14×14
         self.convtr5 = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # Upsample
         self.block6 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip1, process
         
-        # Stage 2: 14×14 → 28×28 (full resolution)
+        # Stage 2: 14×14 to 28×28 (full resolution)
         self.convtr7 = ConvTrBlock2D(64, 96, kernel_size=2, stride=2)  # Upsample
         self.block8 = ResidualSparseBlock2D(96 + 32, 96)               # Merge skip0, process
 
@@ -323,26 +323,26 @@ class MinkNet(nn.Module):
         # ============ ENCODER ============
         
         # Initial convolution at full resolution
-        out = self.conv0(xs)                    # [B,1,28,28] → [B,32,28,28]
+        out = self.conv0(xs)                    # [B,1,28,28] to [B,32,28,28]
         out_p1 = out                            # Skip connection for final decoder stage
         
-        # Stage 1: 28×28 → 14×14
+        # Stage 1: 28×28 to 14×14
         out = self.conv1(out_p1)                # Downsample spatially
         out = self.block1(out)                  # Residual processing
         out_b1p2 = out                          # Skip connection [B,32,14,14]
         
-        # Stage 2: 14×14 → 7×7
+        # Stage 2: 14×14 to 7×7
         out = self.conv2(out_b1p2)              # Downsample spatially
-        out = self.block2(out)                  # Residual + channel projection 32→64
-                                                 # Result: [B,64,7,7] - STOP HERE
+        out = self.block2(out)                  # Residual + channel projection 32 to 64
+                                                # Result: [B,64,7,7] 
 
         # ============ BOTTLENECK (Dense Attention at 7×7) ============
         # Global context with 49 spatial tokens (7×7)
         bot_sparse = out                        # Preserve stride & coords
         x_dense = out.to_dense(channel_dim=1, spatial_shape=(7, 7))
-        x_dense = self.pre_attn(x_dense)        # 64→128 channels
+        x_dense = self.pre_attn(x_dense)        # 64 to 128 channels
         x_dense = self.attn(x_dense)            # Global attention at 7×7
-        x_dense = self.post_attn(x_dense)       # 128→64 channels
+        x_dense = self.post_attn(x_dense)       # 128 to 64 channels
         out = Voxels.from_dense(x_dense, dense_tensor_channel_dim=1,
                                 target_spatial_sparse_tensor=bot_sparse)
 
@@ -353,7 +353,7 @@ class MinkNet(nn.Module):
         out = cat(out, out_b1p2)                # [B,64,14,14] + [B,32,14,14] = [B,96,14,14]
         out = self.block6(out)                  # Process to [B,64,14,14]
         
-        # Stage 2: 14×14 → 28×28 (full resolution)
+        # Stage 2: 14×14 to 28×28 (full resolution)
         out = self.convtr7(out, out_p1)         # Upsample
         out = cat(out, out_p1)                  # [B,96,28,28] + [B,32,28,28] = [B,128,28,28]
         out = self.block8(out)                  # Process to [B,96,28,28]
