@@ -1,8 +1,8 @@
 ## Toy Model with WarpConvNet
 
 ### Installation
-See: [WarpConvNet/installation](https://nvlabs.github.io/WarpConvNet/getting_started/installation/)
 WarpConvNet requires Python >= 3.9 and a working CUDA toolchain.
+See: [WarpConvNet/installation](https://nvlabs.github.io/WarpConvNet/getting_started/installation/).
 
 1. Install CUDA Toolkit. `wcwc` offers `cuda@12.5.1`, but I installed 12.6 manually.  
 ```
@@ -10,7 +10,7 @@ wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/
 sh cuda_12.6.0_560.28.03_linux.run --tmpdir=/some/tmp/dir --toolkitpath=/path/to/cuda-12.6
 ```
 
-2. Create a Python/`uv` environment to install packages.
+2. Create a Python/`uv` environment to install packages:
 ```
 uv venv ml-venv
 ```
@@ -48,12 +48,3 @@ uv pip install .
 ```
 
 6. Install additional packages as required to run the examples.
-```
-uv pip install hydra-core omegaconf torchmetrics
-uv pip install h5py tqdm
-uv pip install matplotlib
-uv pip install pyyaml
-uv pip install warp-lang
-uv pip install torchview
-uv pip install fire
-```
