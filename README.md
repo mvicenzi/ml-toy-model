@@ -18,14 +18,14 @@ uv venv ml-venv
 3. Create a script to quickly setup your envinroment each time.
 ```
 ## local cache (optional)
-export UV_CACHE_DIR=/nfs/data/1/mvicenzi/uv_cache
-export XDG_CACHE_HOME=/nfs/data/1/mvicenzi/cache
+export UV_CACHE_DIR=/path/to/uv_cache
+export XDG_CACHE_HOME=/path/to/cache
 
 ## activate python environment
 source ml-venv/bin/activate
 
 ## export local cuda 12.6 installation
-export CUDA_HOME=//path/to/cuda-12.6
+export CUDA_HOME=/path/to/cuda-12.6
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 ```
