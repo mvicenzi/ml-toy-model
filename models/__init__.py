@@ -1,10 +1,11 @@
 # models/__init__.py
 
-from .uresnet_sparse import MinkNet
-from .uresnet_sparse import Net
+from .minkunet_base import MinkUNetBase
+from .minkunet_attention import MinkUNetDenseAttention, MinkUNetSparseAttention
 
 MODEL_REGISTRY = {
-    "net": Net,
-    "mink_unet": MinkNet,
+    "base": MinkUNetBase,
+    "attn_dense": MinkUNetDenseAttention,
+    "attn_sparse": MinkUNetSparseAttention,
     # add more here
 }
