@@ -37,7 +37,7 @@ class MinkUNetDenseAttention(nn.Module):
     Tensor flow (for 28×28 input):
     Encoder:  [B,1,28,28] → [B,32,28,28] → [B,32,14,14] → [B,64,7,7]
     Bottleneck: [B,64,7,7] → [B,128,7,7] (attention) → [B,64,7,7]
-    Decoder:  [B,64,7,7] → [B,64,14,14] → [B,96,28,28]
+    Decoder:  [B,64,7,7] → [B,64,14,14] → [B,64,28,28]
     """
     def __init__(self):
         super().__init__()
@@ -66,15 +66,15 @@ class MinkUNetDenseAttention(nn.Module):
         self.block6 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip1, process
         
         # Stage 2: 14×14 to 28×28 (full resolution)
-        self.convtr7 = ConvTrBlock2D(64, 96, kernel_size=2, stride=2)  # Upsample
-        self.block8 = ResidualSparseBlock2D(96 + 32, 96)               # Merge skip0, process
+        self.convtr7 = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # Upsample
+        self.block8 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip0, process
 
         # ---- Final projection + classification head ----
-        self.final = SparseConv2d(96, 96, kernel_size=1, bias=True)  # Feature refinement
+        self.final = SparseConv2d(64, 64, kernel_size=1, bias=True)  # Feature refinement
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(96, 10),
+            nn.Linear(64, 10),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -121,11 +121,11 @@ class MinkUNetDenseAttention(nn.Module):
         
         # Stage 2: 14×14 to 28×28 (full resolution)
         out = self.convtr7(out, out_p1)         # Upsample
-        out = cat(out, out_p1)                  # [B,96,28,28] + [B,32,28,28] = [B,128,28,28]
-        out = self.block8(out)                  # Process to [B,96,28,28]
+        out = cat(out, out_p1)                  # [B,64,28,28] + [B,32,28,28] = [B,96,28,28]
+        out = self.block8(out)                  # Process to [B,64,28,28]
 
         # ============ FINAL PROJECTION + HEAD ============
-        out = self.final(out)                   # Feature refinement [B,96,28,28]
+        out = self.final(out)                   # Feature refinement [B,64,28,28]
         
         # Convert to dense for classification
         out_dense = out.to_dense(channel_dim=1, spatial_shape=(28, 28))
@@ -149,7 +149,7 @@ class MinkUNetSparseAttention(nn.Module):
     Tensor flow (for 28x28 input):
     Encoder:  [B,1,28,28] → [B,32,28,28] → [B,32,14,14] → [B,64,7,7]
     Bottleneck: [B,64,7,7] → [B,128,7,7] (attention) → [B,64,7,7]
-    Decoder:  [B,64,7,7] → [B,64,14,14] → [B,96,28,28]
+    Decoder:  [B,64,7,7] → [B,64,14,14] → [B,64,28,28]
     """
     def __init__(self):
         super().__init__()
@@ -176,15 +176,15 @@ class MinkUNetSparseAttention(nn.Module):
         self.block6 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip1, process
         
         # Stage 2: 14×14 to 28×28 (full resolution)
-        self.convtr7 = ConvTrBlock2D(64, 96, kernel_size=2, stride=2)  # Upsample
-        self.block8 = ResidualSparseBlock2D(96 + 32, 96)               # Merge skip0, process
+        self.convtr7 = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # Upsample
+        self.block8 = ResidualSparseBlock2D(64 + 32, 64)               # Merge skip0, process
 
         # ---- Final projection + classification head ----
-        self.final = SparseConv2d(96, 96, kernel_size=1, bias=True)  # Feature refinement
+        self.final = SparseConv2d(64, 64, kernel_size=1, bias=True)  # Feature refinement
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(96, 10),
+            nn.Linear(64, 10),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -224,11 +224,11 @@ class MinkUNetSparseAttention(nn.Module):
         
         # Stage 2: 14×14 to 28×28 (full resolution)
         out = self.convtr7(out, out_p1)         # Upsample
-        out = cat(out, out_p1)                  # [B,96,28,28] + [B,32,28,28] = [B,128,28,28]
-        out = self.block8(out)                  # Process to [B,96,28,28]
+        out = cat(out, out_p1)                  # [B,64,28,28] + [B,32,28,28] = [B,96,28,28]
+        out = self.block8(out)                  # Process to [B,64,28,28]
 
         # ============ FINAL PROJECTION + HEAD ============
-        out = self.final(out)                   # Feature refinement [B,96,28,28]
+        out = self.final(out)                   # Feature refinement [B,64,28,28]
         
         # Convert to dense for classification
         out_dense = out.to_dense(channel_dim=1, spatial_shape=(28, 28))

@@ -23,7 +23,7 @@ class MinkUNetBase(nn.Module):
     Tensor flow (for 28x28 input):
     Encoder:   [B,1,28,28] -> [B,32,28,28] -> [B,32,14,14] -> [B,64,7,7]
     Bottleneck:            [B,64,7,7] -> [B,64,7,7]
-    Decoder:   [B,64,7,7] -> [B,64,14,14] -> [B,96,28,28]
+    Decoder:   [B,64,7,7] -> [B,64,14,14] -> [B,64,28,28]
     """
     def __init__(self):
         super().__init__()
@@ -50,15 +50,15 @@ class MinkUNetBase(nn.Module):
         self.block6  = ResidualSparseBlock2D(64 + 32, 64)              # Merge skip1, process
 
         # Stage 2: 14x14 -> 28x28 (full resolution)
-        self.convtr7 = ConvTrBlock2D(64, 96, kernel_size=2, stride=2)  # Upsample
-        self.block8  = ResidualSparseBlock2D(96 + 32, 96)              # Merge skip0, process
+        self.convtr7 = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # Upsample
+        self.block8  = ResidualSparseBlock2D(64 + 32, 64)              # Merge skip0, process
 
         # ---- Final projection + classification head ----
-        self.final = SparseConv2d(96, 96, kernel_size=1, bias=True)    # Feature refinement
+        self.final = SparseConv2d(64, 64, kernel_size=1, bias=True)    # Feature refinement
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(96, 10),
+            nn.Linear(64, 10),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -98,12 +98,12 @@ class MinkUNetBase(nn.Module):
 
         # Stage 2: 14x14 -> 28x28
         out = self.convtr7(out, out_p1)    # Upsample
-        out = cat(out, out_p1)             # [B,96,28,28] + [B,32,28,28] = [B,128,28,28]
-        out = self.block8(out)             # -> [B,96,28,28]
+        out = cat(out, out_p1)             # [B,64,28,28] + [B,32,28,28] = [B,96,28,28]
+        out = self.block8(out)             # -> [B,64,28,28]
 
         # ============ FINAL PROJECTION + HEAD ============
 
-        out = self.final(out)              # [B,96,28,28]
+        out = self.final(out)              # [B,64,28,28]
 
         out_dense = out.to_dense(channel_dim=1, spatial_shape=(28, 28))
         logits = self.head(out_dense)

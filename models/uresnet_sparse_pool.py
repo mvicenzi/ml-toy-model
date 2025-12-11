@@ -42,15 +42,15 @@ class UResNetSparsePool(nn.Module):
         self.up1  = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # upsample 7→14
         self.dec1 = ResidualSparseBlock2D(64 + 64, 64)              # merge skip2 + current
 
-        self.up0  = ConvTrBlock2D(64, 32, kernel_size=2, stride=2)  # upsample 14→28
-        self.dec0 = ResidualSparseBlock2D(32 + 32, 32)              # merge skip1 + current
+        self.up0  = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # upsample 14→28
+        self.dec0 = ResidualSparseBlock2D(64 + 32, 64)              # merge skip1 + current
 
         # ---- Head (dense classification) ----
         # Pool global information into a vector and output 10 logits
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(32, 10),
+            nn.Linear(64, 10),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -89,7 +89,7 @@ class UResNetSparsePool(nn.Module):
         y = self.dec1(y)                               # residual processing
 
         y = self.up0(y, skip1)                         # 14 to 28 upsample
-        y = cat(y, skip1)                              # concat (32+32)
+        y = cat(y, skip1)                              # concat (64+32)
         y = self.dec0(y)                               # residual processing
 
         # ------------------ Head ------------------
@@ -131,15 +131,15 @@ class UResNetSparsePoolAttention(nn.Module):
         self.up1  = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # upsample 7→14
         self.dec1 = ResidualSparseBlock2D(64 + 64, 64)              # merge skip2 + current
 
-        self.up0  = ConvTrBlock2D(64, 32, kernel_size=2, stride=2)  # upsample 14→28
-        self.dec0 = ResidualSparseBlock2D(32 + 32, 32)              # merge skip1 + current
+        self.up0  = ConvTrBlock2D(64, 64, kernel_size=2, stride=2)  # upsample 14→28
+        self.dec0 = ResidualSparseBlock2D(64 + 32, 64)              # merge skip1 + current
 
         # ---- Head (dense classification) ----
         # Pool global information into a vector and output 10 logits
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
-            nn.Linear(32, 10),
+            nn.Linear(64, 10),
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -191,7 +191,7 @@ class UResNetSparsePoolAttention(nn.Module):
         y = self.dec1(y)                               # residual processing
 
         y = self.up0(y, skip1)                         # 14 to 28 upsample
-        y = cat(y, skip1)                              # concat (32+32)
+        y = cat(y, skip1)                              # concat (64+32)
         y = self.dec0(y)                               # residual processing
 
         # ------------------ Head ------------------

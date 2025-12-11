@@ -63,7 +63,7 @@ MODEL_REGISTRY = {
 ```
 
 ### Training a model
-Training is perfomed by executing `training.py`. Training parameters, such as the model architecture or the number of epochs, can be set interactively by ovveride the default parameters.
+Training is perfomed by executing `training.py`. Training parameters, such as the model architecture or the number of epochs, can be set interactively by ovveriding the default parameters.
 For example:
 ```
 python training.py --model_name=base --epochs=10
