@@ -48,3 +48,24 @@ uv pip install .
 ```
 
 6. Install additional packages as required to run the examples.
+
+### Model architectures
+Model architectures are available in `./models` and must be declared in the `MODEL_REGISTRY` (defined in `./models/__init__.py`) to be picked up for training.
+For example:
+```
+from .minkunet_base import MinkUNetBase
+
+MODEL_REGISTRY = {
+    "base": MinkUNetBase,
+    # add more here
+    ...
+}
+```
+
+### Training a model
+Training is perfomed by executing `training.py`. Training parameters, such as the model architecture or the number of epochs, can be set interactively by ovveride the default parameters.
+For example:
+```
+python training.py --model_name=base --epochs=10
+python training.py --model_name=attn_dense --epochs=10
+```
