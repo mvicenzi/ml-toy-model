@@ -151,7 +151,7 @@ class BottleneckDenseAttention2D(nn.Module):
 
 class BottleneckSparseAttention2D(nn.Module):
     """
-    Sparse transformer-style bottleneck using WarpConvNet's TransformerBlock.
+    Sparse transformer-style bottleneck using WarpConvNet's PatchAttention.
     Operates directly on Geometry (e.g. Voxels), so we never densify.
     Flow: norm -> PathAttention -> residual -> MLP -> residual.
     """

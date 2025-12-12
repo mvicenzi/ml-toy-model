@@ -199,25 +199,25 @@ class MetricsVisualizer:
         if not self._ensure_loaded():
             return
         
-        fig = plt.figure(figsize=(16, 10))
+        fig = plt.figure(figsize=(16, 10),dpi=200)
         
-        ax1 = plt.subplot(2, 3, 1)
+        ax1 = plt.subplot(2, 2, 1)
         self.plot_training_loss(model_names=model_names, ax=ax1)
         
-        ax2 = plt.subplot(2, 3, 2)
+        ax2 = plt.subplot(2, 2, 2)
         self.plot_test_accuracy(model_names=model_names, ax=ax2)
         
-        ax3 = plt.subplot(2, 3, 3)
+        ax3 = plt.subplot(2, 2, 3)
         self.plot_gpu_memory_usage(model_names=model_names, ax=ax3)
         
-        ax4 = plt.subplot(2, 3, 4)
-        self.plot_throughput(model_names=model_names, ax=ax4)
+        #ax4 = plt.subplot(2, 3, 4)
+        #self.plot_throughput(model_names=model_names, ax=ax4)
         
-        ax5 = plt.subplot(2, 3, 5)
+        ax5 = plt.subplot(2, 2, 4)
         self.plot_model_size_vs_accuracy(model_names=model_names, ax=ax5)
         
-        ax6 = plt.subplot(2, 3, 6)
-        self.plot_training_time(model_names=model_names, ax=ax6)
+        #ax6 = plt.subplot(2, 3, 6)
+        #self.plot_training_time(model_names=model_names, ax=ax6)
         
         plt.tight_layout()
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
