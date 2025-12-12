@@ -114,19 +114,30 @@ class ResidualSparseBlock2D(nn.Module):
 class BottleneckDenseAttention2D(nn.Module):
     """
     Dense multi-head self-attention at the bottleneck.
-    - Operates on small 7x7 dense feature maps (cost is negligible).
-    - Provides global context by letting each spatial token attend to all others.
-    Flow: norm -> MHSA -> residual -> MLP -> residual.
-
+    Operates on small 7×7 dense maps → global receptive field.
+    Flow:
+        x -> LayerNorm -> MHSA -> +skip
+        -> LayerNorm -> MLP -> +skip
     """
     def __init__(self, channels: int, heads: int = 4, mlp_ratio: float = 2.0, dropout: float = 0.0):
         super().__init__()
-        self.norm = nn.BatchNorm2d(channels)
+
+        # Pre-attention layernorm
+        self.norm1 = nn.LayerNorm(channels)
+
+        # Dense Multi-Head Self-Attention
         self.mha = nn.MultiheadAttention(
-            embed_dim=channels, num_heads=heads, batch_first=True, dropout=dropout
+            embed_dim=channels,
+            num_heads=heads,
+            batch_first=True,
+            dropout=dropout,
         )
+
+        # Pre-MLP layernorm
+        self.norm2 = nn.LayerNorm(channels)
+
+        # 1×1 Conv MLP
         hidden = int(channels * mlp_ratio)
-        # A small MLP (2-layer 1x1 conv) adds non-linear mixing after attention
         self.mlp = nn.Sequential(
             nn.Conv2d(channels, hidden, kernel_size=1),
             nn.GELU(),
@@ -134,15 +145,29 @@ class BottleneckDenseAttention2D(nn.Module):
         )
 
     def forward(self, x: Tensor) -> Tensor:
-        # x: [B, C, H, W] -> flatten spatial dims -> [B, HW, C]
         b, c, h, w = x.shape
-        x = self.norm(x)
-        tokens = x.flatten(2).transpose(1, 2)     # Convert to token sequence [B, HW, C]
-        attn_out, _ = self.mha(tokens, tokens, tokens)  # Global self-attention
-        tokens = tokens + attn_out                # Residual connection
+
+        # ---- PRE-ATTENTION NORMALIZATION ----
+        tokens = x.flatten(2).transpose(1, 2)        # [B, HW, C]
+        tokens = self.norm1(tokens)
+
+        # ---- MHSA ----
+        attn_out, _ = self.mha(tokens, tokens, tokens)
+        tokens = tokens + attn_out                   # Skip 1
+
+        # ---- RESTRUCTURE BACK TO MAP ----
         x = tokens.transpose(1, 2).reshape(b, c, h, w)
-        x = x + self.mlp(x)                       # Another residual connection via MLP
+
+        # ---- PRE-MLP NORMALIZATION ----
+        x_norm = x.flatten(2).transpose(1, 2)
+        x_norm = self.norm2(x_norm)
+        x_norm = x_norm.transpose(1, 2).reshape(b, c, h, w)
+
+        # ---- MLP + SKIP ----
+        x = x + self.mlp(x_norm)
+
         return x
+
 
 
 # ---------------------------------------------------------------------------
@@ -194,12 +219,14 @@ class BottleneckSparseAttention2D(nn.Module):
         x2 = self.pre_proj(x)
 
         # Geometry in/out 
-        h = self.attn(self.norm1(x2))
-        x2 = x2 + h 
+        x2_norm1 = self.norm1(x2)
+        h = self.attn(x2_norm1)
+        x2 = x2_norm1 + h 
 
         # MLP sub-block
-        h2 = self.mlp(self.norm2(x2)) 
-        x2 = x2 + h2 
+        x2_norm2 = self.norm2(x2)
+        h2 = self.mlp(x2_norm2) 
+        x2 = x2_norm2 + h2 
 
         x_out = self.post_proj(x2)
         return x_out
