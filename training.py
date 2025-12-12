@@ -55,7 +55,7 @@ def test(model, device, test_loader):
 
 def main(
     model_name="base",
-    batch_size=128,
+    batch_size=120,
     test_batch_size=1000,
     epochs=5,
     lr=1e-3,
