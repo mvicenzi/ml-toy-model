@@ -102,25 +102,47 @@ class MetricsVisualizer:
         return ax
 
     def plot_gpu_memory_usage(self, model_names=None, ax=None):
-        """3. GPU Memory Usage over batches."""
+        """3. GPU Peak Memory Usage per batch."""
         if not self._ensure_loaded():
             return
-        
+
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
-        
+
         any_plotted = False
         for name, data in self._iter_selected_models(model_names):
-            if 'gpu_memory_allocated_mb' in data['batch_metrics']:
-                mem = data['batch_metrics']['gpu_memory_allocated_mb']
-                ax.plot(mem, label=name, alpha=0.7)
+            batch_metrics = data.get("batch_metrics", {})
+            if "gpu_memory_peak_mb" in batch_metrics:
+                mem_peak = batch_metrics["gpu_memory_peak_mb"]
+                ax.plot(mem_peak, label=name, alpha=0.8)
                 any_plotted = True
-        
-        ax.set_xlabel('Batch')
-        ax.set_ylabel('Allocated GPU Memory [MB]')
-        ax.set_title('GPU Memory Usage')
+
+        ax.set_xlabel("Batch")
+        ax.set_ylabel("Peak GPU Memory [MB]")
+        ax.set_title("GPU Peak Memory per Batch")
         if any_plotted:
             ax.legend()
+        ax.grid(True, alpha=0.3)
+        return ax
+    
+    def plot_gpu_memory_peak_by_epoch(self, model_names=None, ax=None):
+        """GPU Peak Memory per Epoch (CUDA-reported)."""
+        if not self._ensure_loaded():
+            return
+
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 4), dpi=200)
+
+        for name, data in self._iter_selected_models(model_names):
+            epoch = data["epoch_metrics"]["epoch"]
+            peak = data["epoch_metrics"].get("gpu_memory_peak_direct_mb",
+                                            data["epoch_metrics"]["gpu_memory_peak_mb"])
+            ax.plot(epoch, peak, marker="o", label=name)
+
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Peak GPU Memory [MB]")
+        ax.set_title("Peak GPU Memory per Epoch")
+        ax.legend()
         ax.grid(True, alpha=0.3)
         return ax
 
@@ -207,11 +229,11 @@ class MetricsVisualizer:
         ax2 = plt.subplot(2, 2, 2)
         self.plot_test_accuracy(model_names=model_names, ax=ax2)
         
-        ax3 = plt.subplot(2, 2, 3)
-        self.plot_gpu_memory_usage(model_names=model_names, ax=ax3)
+        #ax3 = plt.subplot(2, 3, 3)
+        #self.plot_gpu_memory_usage(model_names=model_names, ax=ax3)
         
-        #ax4 = plt.subplot(2, 3, 4)
-        #self.plot_throughput(model_names=model_names, ax=ax4)
+        ax4 = plt.subplot(2, 2, 3)
+        self.plot_gpu_memory_peak_by_epoch(model_names=model_names, ax=ax4)
         
         ax5 = plt.subplot(2, 2, 4)
         self.plot_model_size_vs_accuracy(model_names=model_names, ax=ax5)
@@ -243,11 +265,17 @@ class MetricsVisualizer:
             best_acc = max(data['epoch_metrics']['test_accuracy'])
             total_time = sum(data['epoch_metrics']['epoch_time_sec'])
             
-            if 'gpu_memory_peak_mb' in data['epoch_metrics']:
-                peak_gpu = max(data['epoch_metrics']['gpu_memory_peak_mb'])
-                gpu_str = f"{peak_gpu:.1f}"
+            epoch_metrics = data["epoch_metrics"]
+
+            if "gpu_memory_peak_direct_mb" in epoch_metrics:
+                peak_gpu = max(epoch_metrics["gpu_memory_peak_direct_mb"])
+            elif "gpu_memory_peak_mb" in epoch_metrics:
+                peak_gpu = max(epoch_metrics["gpu_memory_peak_mb"])
             else:
-                gpu_str = "N/A"
+                peak_gpu = None
+
+            gpu_str = f"{peak_gpu:.1f}" if peak_gpu is not None else "N/A"
+
             
             print(f"{model_name:<15} {params:<12.2f} {final_acc:<12.2f} {best_acc:<12.2f} "
                   f"{total_time:<12.1f} {gpu_str:<15}")
