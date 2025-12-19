@@ -7,8 +7,10 @@ from warpconvnet.nn.modules.sparse_conv import SparseConv2d             # 2D spa
 from warpconvnet.nn.modules.sequential import Sequential                # Ordered list of sparse modules
 from warpconvnet.nn.modules.activations import ReLU                     # Sparse-aware ReLU activation
 from warpconvnet.nn.modules.normalizations import LayerNorm             # layer normalization 
-from warpconvnet.nn.modules.attention import PatchAttention, SpatialFeatureAttention  # Sparse attention
 from warpconvnet.nn.modules.activations import GELU                     # Sparse-aware ReLU activation
+
+#from warpconvnet.nn.modules.attention import PatchAttention, SpatialFeatureAttention  # Sparse attention
+from .attention2D import SpatialFeatureAttention2D
 
 # ---------------------------------------------------------------------------
 # Building blocks: small modular components used to construct the main model
@@ -181,8 +183,11 @@ class BottleneckSparseAttention2D(nn.Module):
     Flow: norm -> PathAttention -> residual -> MLP -> residual.
     """
     def __init__(self, channels: int, attn_channels: int, heads: int = 4, patch_size: int = 64, 
-                 attn_drop: float = 0.0, proj_drop: float = 0.0, mlp_ratio: float = 2.0):
+                 attn_drop: float = 0.0, proj_drop: float = 0.0, mlp_ratio: float = 2.0,
+                 encoding: bool = True, flash: bool = True ):
         super().__init__()
+
+        print(f"[BottleneckSparseAttention2D] encoding={encoding}, flash={flash}")
 
         # project before attention (sparse 1x1 conv)
         self.pre_proj = SparseConv2d(channels, attn_channels, kernel_size=1)
@@ -191,17 +196,19 @@ class BottleneckSparseAttention2D(nn.Module):
         self.norm1 = LayerNorm(attn_channels)
         self.norm2 = LayerNorm(attn_channels)
 
-        ## WARNING: can't Use PatchAttention --> does not support 2D
-        ## note if patch size > spatial dimension, then it is global
-        ##self.attn = PatchAttention(dim=attn_channels,patch_size=patch_size,num_heads=heads,
-        ##                              qkv_bias=True,attn_drop=attn_drop, proj_drop=proj_drop)
-        
-        # --- trying to avoid the wrapper and calling the function with no encoding
-                # Sparse attention over features (no positional encoding → 2D-safe)
-        self.attn = SpatialFeatureAttention(dim=attn_channels, num_heads=heads, qkv_bias=True, qk_scale=None,
-            attn_drop=attn_drop, proj_drop=proj_drop, num_encoding_channels=32, encoding_range=1.0,
-            use_encoding=False,      # <-- IMPORTANT: ignore coordinates, works in 2D
-            enable_flash=True, use_batched_qkv=True)
+        # Sparse attention over features (positional encoding is 2D-safe)
+        # this uses custom modules in attention2D.py
+        self.attn = SpatialFeatureAttention2D(dim=attn_channels, 
+                                              num_heads=heads, 
+                                              qkv_bias=True, 
+                                              qk_scale=None,
+                                              attn_drop=attn_drop, 
+                                              proj_drop=proj_drop,
+                                              num_encoding_channels=32, 
+                                              encoding_range=1.0,
+                                              use_encoding=encoding,
+                                              enable_flash=flash, 
+                                              use_batched_qkv=True)
 
         hidden = int(attn_channels * mlp_ratio)
         # A small MLP (2-layer 1x1 conv) adds non-linear mixing after attention

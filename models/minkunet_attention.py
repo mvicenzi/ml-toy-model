@@ -151,7 +151,7 @@ class MinkUNetSparseAttention(nn.Module):
     Bottleneck: [B,64,7,7] → [B,128,7,7] (attention) → [B,64,7,7]
     Decoder:  [B,64,7,7] → [B,64,14,14] → [B,64,28,28]
     """
-    def __init__(self):
+    def __init__(self, *, spatial_encoding: bool = True, flash_attention: bool = True, **kwargs,):
         super().__init__()
 
         # ---- Initial convolution (full resolution feature extraction) ----
@@ -168,7 +168,8 @@ class MinkUNetSparseAttention(nn.Module):
 
         # ---- Bottleneck (dense attention at 7×7) ----
         # Global context at 7×7 resolution (49 spatial tokens)
-        self.bottleneck = BottleneckSparseAttention2D(channels=64, attn_channels=128, heads=4)
+        self.bottleneck = BottleneckSparseAttention2D(channels=64, attn_channels=128, heads=4, 
+                                                      encoding=spatial_encoding, flash=flash_attention)
 
         # ---- Decoder (2 stages, symmetric to encoder) ----
         # Stage 1: 7×7 to 14×14
@@ -234,3 +235,16 @@ class MinkUNetSparseAttention(nn.Module):
         out_dense = out.to_dense(channel_dim=1, spatial_shape=(28, 28))
         logits = self.head(out_dense)           # Global pool + classify
         return F.log_softmax(logits, dim=1)     # Log-probabilities for 10 digits
+    
+
+class MinkUNetSparseAttentionNoEnc(MinkUNetSparseAttention):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, spatial_encoding=False, flash_attention=True, **kwargs)
+
+class MinkUNetSparseAttentionNoFlash(MinkUNetSparseAttention):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, spatial_encoding=True, flash_attention=False, **kwargs)
+
+class MinkUNetSparseAttentionNoFlashEnc(MinkUNetSparseAttention):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, spatial_encoding=False, flash_attention=False, **kwargs)
